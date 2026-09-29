@@ -1,0 +1,15 @@
+# 单机历史备份（体积大、每台机器独立，无需跨机同步）
+_backup/
+
+# 每台机器的应用元数据归档（含本机路径，跨机无意义）
+_app_meta/
+
+# WorkBuddy 内部迁移标记文件（本机生成，跨机无意义）
+._bm_skillid_migration.json
+.disable_to_model_invocation_migration.json
+.model_invocation_to_override_migration.json
+
+# 操作系统垃圾
+Thumbs.db
+Desktop.ini
+.DS_Store
