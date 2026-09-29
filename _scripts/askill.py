@@ -8,20 +8,21 @@ askill - 本地 Skill 管理工具
 
 核心约定
 --------
-- 仓库（唯一真相源）: D:\\WorkSpace\\Myrepo\\ai-skills\\
+- 仓库（唯一真相源）: 本仓库根目录（由脚本位置自动推导，克隆到任意盘符均正确）
 - 各应用侧只保留 junction 链接指向仓库，不存实体副本
+- 开箱即用：克隆后直接 `python _scripts/askill.py link` 即可，无需任何配置
 
 用法
 ----
-    python askill.py status              # 体检：查看各应用链接状态与 skill 清单
-    python askill.py list                # 列出仓库内所有 skill
-    python askill.py link                # 建立/修复所有应用的链接
-    python askill.py link --app trae-cn  # 只处理指定应用
-    python askill.py unlink --app trae-cn# 断开指定应用链接（还原为独立目录）
-    python askill.py sync <路径>          # 把某个 skill 目录归集进仓库
-    python askill.py here <路径>          # 把某个 skill 移动到仓库并原地留链接
-    python askill.py verify              # 校验链接有效性（能读能写）
-    python askill.py doctor              # 深度诊断：查分叉、冗余副本、孤儿文件
+    python _scripts/askill.py status              # 体检：查看各应用链接状态与 skill 清单
+    python _scripts/askill.py list                # 列出仓库内所有 skill
+    python _scripts/askill.py link                # 给已安装的应用建立/修复链接
+    python _scripts/askill.py link --app trae-cn  # 只处理指定应用
+    python _scripts/askill.py unlink --app trae-cn# 断开指定应用链接（还原为独立目录）
+    python _scripts/askill.py sync <路径>          # 把某个 skill 目录归集进仓库
+    python _scripts/askill.py here <路径>          # 把某个 skill 移动到仓库并原地留链接
+    python _scripts/askill.py verify              # 校验链接有效性（能读能写）
+    python _scripts/askill.py doctor              # 深度诊断：查分叉、冗余副本、孤儿文件
 """
 
 import argparse
@@ -35,37 +36,48 @@ import sys
 
 # ---------------------------------------------------------------- 配置
 
-# 仓库（唯一真相源）。
-# 可被环境变量 ASKILL_REPO 或同目录 askill_config.json 的 "repo" 字段覆盖，
-# 以便换机器 / 换盘符后无需改代码。
-REPO = r"D:\WorkSpace\Myrepo\ai-skills"
+# 仓库根目录 = 本脚本所在目录(_scripts)的上层。
+# 这样无论从哪台机器、克隆到哪个盘符，仓库位置都自动正确，无需改代码、无需配置。
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+REPO_DEFAULT = os.path.dirname(SCRIPT_DIR)
+
 META_DIRNAME = "_app_meta"
 BACKUP_DIRNAME = "_backup"
 SCRIPTS_DIRNAME = "_scripts"
 
-# 应用注册表：名称 -> 应用侧 skills 路径。
-# 可经 askill_config.json 的 "apps" 字段合并覆盖（便于换机器 / 换用户名）。
-APPS = {
-    "workbuddy": r"C:\Users\Administrator\.workbuddy\skills",
-    "trae-cn":   r"C:\Users\Administrator\.trae-cn\skills",
-    "trae":      r"C:\Users\Administrator\.trae\skills",
-    "codebuddy": r"C:\Users\Administrator\.codebuddy\skills",
-    "claude":    r"C:\Users\Administrator\.claude\skills",
-    "cursor":    r"C:\Users\Administrator\.cursor\skills",
-    "codex":     r"C:\Users\Administrator\.codex\skills",
-    "qwen":      r"C:\Users\Administrator\.qwen\skills",
-    "iflow":     r"C:\Users\Administrator\.iflow\skills",
-    "agents":    r"C:\Users\Administrator\.agents\skills",
-    "gemini":    r"C:\Users\Administrator\.gemini\skills",
-    "windsurf":  r"C:\Users\Administrator\.windsurf\skills",
-    "roo":       r"C:\Users\Administrator\.roo\skills",
-    "kilo":      r"C:\Users\Administrator\.kilocode\skills",
-    "continue":  r"C:\Users\Administrator\.continue\skills",
-    "cline":     r"C:\Users\Administrator\.cline\skills",
-}
 
-# 不视为 skill 的仓库顶层项（内部目录一律以 _ 开头）
-RESERVED = {SCRIPTS_DIRNAME, BACKUP_DIRNAME, META_DIRNAME, "scripts"}
+def _default_apps():
+    """默认应用注册表：基于当前用户主目录(~)推导，跨机器/跨用户名自动适配。
+
+    需要换盘符或自定义路径时，用 askill_config.json 的 "apps" 字段覆盖即可。
+    """
+    home = os.path.expanduser("~")
+    return {
+        "workbuddy": os.path.join(home, ".workbuddy", "skills"),
+        "trae-cn":   os.path.join(home, ".trae-cn", "skills"),
+        "trae":      os.path.join(home, ".trae", "skills"),
+        "codebuddy": os.path.join(home, ".codebuddy", "skills"),
+        "claude":    os.path.join(home, ".claude", "skills"),
+        "cursor":    os.path.join(home, ".cursor", "skills"),
+        "codex":     os.path.join(home, ".codex", "skills"),
+        "qwen":      os.path.join(home, ".qwen", "skills"),
+        "iflow":     os.path.join(home, ".iflow", "skills"),
+        "agents":    os.path.join(home, ".agents", "skills"),
+        "gemini":    os.path.join(home, ".gemini", "skills"),
+        "windsurf":  os.path.join(home, ".windsurf", "skills"),
+        "roo":       os.path.join(home, ".roo", "skills"),
+        "kilo":      os.path.join(home, ".kilocode", "skills"),
+        "continue":  os.path.join(home, ".continue", "skills"),
+        "cline":     os.path.join(home, ".cline", "skills"),
+    }
+
+
+APPS = _default_apps()
+# 兼容旧引用：REPO 默认值等于自动推导的仓库根（随后 _load_overrides 可能覆盖）。
+REPO = REPO_DEFAULT
+
+# 不视为 skill 的仓库顶层项（内部目录一律以 _ 开头；git 仓库的 .git 也排除）
+RESERVED = {SCRIPTS_DIRNAME, BACKUP_DIRNAME, META_DIRNAME, "scripts", "git"}
 
 
 # ---------------------------------------------------------------- 配置覆盖层
@@ -82,12 +94,12 @@ def _expand(p):
 def _load_overrides():
     """从环境变量 / 同目录 askill_config.json 覆盖 REPO 与 APPS。
 
-    覆盖优先级：环境变量 ASKILL_REPO > askill_config.json["repo"] > 代码默认值。
+    覆盖优先级：环境变量 ASKILL_REPO > askill_config.json["repo"] > 自动推导的仓库根。
+    config 文件固定位于仓库根的 askill_config.json（由脚本位置推导，跨机器有效）。
     APPS 采用合并语义：config 里的键覆盖同名项，新增键追加，未提及项保留默认。
     """
     global REPO, APPS
-    cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "askill_config.json")
+    cfg_path = os.path.join(REPO_DEFAULT, "askill_config.json")
     cfg = {}
     if os.path.isfile(cfg_path):
         try:
@@ -95,7 +107,7 @@ def _load_overrides():
                 cfg = json.load(f) or {}
         except Exception:
             cfg = {}
-    repo = os.environ.get("ASKILL_REPO") or cfg.get("repo") or REPO
+    repo = os.environ.get("ASKILL_REPO") or cfg.get("repo") or REPO_DEFAULT
     REPO = _expand(repo)
     apps = cfg.get("apps") or {}
     if isinstance(apps, dict) and apps:
@@ -109,8 +121,8 @@ _load_overrides()
 
 
 def is_reserved(name):
-    """内部目录判定：显式名单 + 任何以 _ 开头的项"""
-    return name in RESERVED or name.startswith("_")
+    """内部目录判定：显式名单 + 任何以 _ 或 . 开头的项（顺带排除 .git 等）"""
+    return name in RESERVED or name.startswith("_") or name.startswith(".")
 
 # ---------------------------------------------------------------- 输出
 
@@ -445,15 +457,19 @@ def cmd_link(args):
         path = APPS[name]
         lt = link_type(path)
 
-        # 未安装的应用：跳过（不主动创建目录，除非显式指定）
+        # 目录不存在时：若该应用已安装（其父目录存在）则新建链接；否则跳过。
+        # 这样 `link` 默认只对"本机已装的应用"生效，不会在未装应用上乱建目录。
         if lt == "missing":
-            if args.app:
-                # 显式指定则创建
+            parent = os.path.dirname(path)
+            if args.app or os.path.isdir(parent):
                 kind, msg = make_link(path, REPO)
-                lines.append(ok("%-10s 新建 %s (%s)" % (name, kind or "?", msg)))
-                touched += 1
+                if is_healthy_link(path):
+                    lines.append(ok("%-10s 新建 %s 链接" % (name, kind or "?")))
+                    touched += 1
+                else:
+                    lines.append(bad("%-10s 新建链接失败: %s" % (name, msg)))
             else:
-                lines.append("  [SKIP] %-10s 未安装" % name)
+                lines.append("  [SKIP] %-10s 未安装（%s 不存在）" % (name, parent))
             continue
 
         if is_healthy_link(path):
