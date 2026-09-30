@@ -50,6 +50,11 @@ import subprocess
 import sys
 import tempfile
 
+# 允许以脚本方式或直接 import 运行时找到同目录的 wb_runtime
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import wb_runtime  # noqa: E402
+from wb_runtime import AuthError as _WbAuthError, AUTH_REASONS as _WB_AUTH_REASONS  # noqa: E402
+
 APP_NAMES = ("WorkBuddy", "CodeBuddy")
 
 # 旧版 vscdb 中的会话 key（与 decrypt-token.js 保持一致）
@@ -60,6 +65,7 @@ LEGACY_SESSION_KEYS = (
 SOURCE_DESKTOP_INFO = "workbuddy-desktop.info"
 SOURCE_VSCDB = "state.vscdb"
 SOURCE_BACKUP_INFO = "workbuddy-desktop.*.info 明文备份"
+SOURCE_DESKTOP_INFO_ENC = "workbuddy-desktop.info ($wbEncrypted 运行时解密)"
 
 # 候选登录态文件「存在但被系统拒读」（如 macOS 隐私保护/TCC）的记录，
 # 仅用于生成准确的错误信息，不含任何敏感内容。
@@ -67,7 +73,9 @@ _PERM_DENIED: list[str] = []
 
 # WorkBuddy 5.6.0+ 本地凭据加密（$wbEncrypted 信封）的检测记录：
 # (path, uid, auth_domain)。仅含路径与非敏感账号归属字段，绝不含 envelope 内容。
-_ENCRYPTED_FOUND: list[tuple[str, str, str]] = []
+_ENCRYPTED_FOUND: list[tuple[str, str, str, dict]] = []
+# 运行时解密失败记录（仅路径 + 白名单原因，绝不含 envelope/token）
+_RUNTIME_AUTH_FAILED: list[tuple[str, str]] = []
 
 # 显式备份回退开关（默认关闭）：设 WB_REWARD_ALLOW_BACKUP=1 时，
 # 在主文件 token 已加密的前提下，允许使用「同 uid + 同 domain + 未过期」的
@@ -165,6 +173,7 @@ def _load_plaintext() -> dict | None:
                 path,
                 account.get("uid") or auth.get("uid") or "",
                 auth.get("domain") or "",
+                token,
             ))
     return None
 
@@ -400,31 +409,62 @@ def _load_legacy() -> dict | None:
 def load_credentials() -> dict:
     """
     读取本地登录态，返回统一结构 {"access_token","uid","source"}。
-    优先级：新版明文 →（显式开启时）同账号明文备份 → 旧版 state.vscdb。
+    优先级（v1.0.2）：
+      1. 新版明文（workbuddy-desktop.info 明文 accessToken）
+      2. 5.6.0+ $wbEncrypted 信封 → WorkBuddy 本地运行时内存解密（不落盘）
+      3. 旧版 state.vscdb（Electron safeStorage 解密）
+      4. 应急历史明文备份：仅当 WB_REWARD_ALLOW_BACKUP=1 且上述全部失败时才启用
+         （该开关绝不意味着"优先使用历史备份"）
     失败时抛出 CredentialError（信息中不含任何 token / envelope 内容）。
     """
     _PERM_DENIED.clear()
     _ENCRYPTED_FOUND.clear()
+    _RUNTIME_AUTH_FAILED.clear()
+
+    # 1) 新版明文主路径
     cred = _load_plaintext()
     if cred:
         return cred
-    # 5.6.0+ 加密主文件：仅在用户显式开启时尝试严格校验的明文备份回退
+
+    # 2) 5.6.0+ 加密主文件：优先走 WorkBuddy 本地运行时解密（内存 token，不落盘）
     if _ENCRYPTED_FOUND:
-        for path, uid, domain in _ENCRYPTED_FOUND:
-            backup = _load_backup(uid, domain)
-            if backup:
-                return backup
+        for path, uid, domain, wb_enc in _ENCRYPTED_FOUND:
+            try:
+                token = wb_runtime.decrypt_token(wb_enc)
+            except _WbAuthError as e:
+                _RUNTIME_AUTH_FAILED.append((path, e.reason))
+                continue
+            if token:
+                return {
+                    "access_token": token,
+                    "uid": uid,
+                    "source": SOURCE_DESKTOP_INFO_ENC,
+                    "used_history_backup": False,
+                }
+
+    # 3) 旧版 state.vscdb 回退
     cred = _load_legacy()
     if cred:
         return cred
+
+    # 4) 应急历史明文备份回退（仅当显式开启且上述全部失败）
+    if _ENCRYPTED_FOUND and os.environ.get(ENV_ALLOW_BACKUP) == "1":
+        for path, uid, domain, _enc in _ENCRYPTED_FOUND:
+            backup = _load_backup(uid, domain)
+            if backup:
+                backup["used_history_backup"] = True
+                return backup
+
+    # 错误归集（仅含路径与非敏感原因，绝不输出 token/envelope）
     if _ENCRYPTED_FOUND:
+        reasons = "; ".join("{}:{}".format(p, r) for p, r in _RUNTIME_AUTH_FAILED)
         raise CredentialError(
             "检测到 WorkBuddy 5.6.0+ 已启用新的本地凭据加密格式"
-            "（accessToken 为 $wbEncrypted 加密信封），当前 Skill 暂无法读取登录态，"
-            "签到与旅行暂不可用。请等待 Skill 更新支持新版格式。"
+            "（accessToken 为 $wbEncrypted 加密信封）。已尝试通过 WorkBuddy 本地运行时"
+            "解密但失败（{}）。请打开 WorkBuddy 桌面端刷新登录态后重试，或等待官方支持。"
             "临时自救：设置环境变量 WB_REWARD_ALLOW_BACKUP=1 后重试"
             "（将严格校验并使用同账号、同域名、未过期的本地明文备份，"
-            "该通道在备份 token 到期后自然失效，非长期方案）。"
+            "该通道在备份 token 到期后自然失效，非长期方案）。".format(reasons)
         )
     if _PERM_DENIED:
         raise CredentialError(

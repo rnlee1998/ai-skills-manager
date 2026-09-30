@@ -2,7 +2,7 @@
   "name": "WorkBuddy积分助手",
   "installedAt": 1788847509965,
   "source": "marketplace",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "skillId": "skill_2095743869351309312",
   "description_zh": "WorkBuddy积分助手可以帮助你管理日常积分任务。支持Buddy加油站签到和Buddy旅行任务，让重复操作交给AI自动完成。",
   "description_en": "WorkBuddy Reward Helper manages your daily credit tasks — Buddy gas-station check-in and Buddy travel dispatch/claim — letting AI handle the repetitive work for you.",

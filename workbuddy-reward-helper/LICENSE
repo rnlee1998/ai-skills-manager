@@ -1,0 +1,40 @@
+MIT License
+
+Copyright (c) 2026 88lin
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## 许可范围说明（Scope Note）
+
+本文件随附于 WorkBuddy 积分助手（workbuddy-reward-helper）v1.0.2。
+
+- **scripts/wb_runtime.py** 最小必要迁移自开源项目
+  `88lin/workbuddy-auto-signin`（提交 `cceadda3fc98172a8d2fb3c26aee116c67f26ea2`），
+  仅复用其「通过 WorkBuddy 客户端本地运行时内存解密 `$wbEncrypted` 信封」的实现，
+  依其原始 MIT 协议，版权归属 **Copyright (c) 2026 88lin**（见上方许可证文本）。
+  原项目的签到 / 成长中心业务逻辑未纳入本 Skill。
+- 本 Skill 其余部分（main.py / credentials.py / checkin.py / travel.py / http_client.py
+  及文档）同样以 MIT 协议发布，版权归属 **Copyright (c) 2026 大顺AI实测**。
+- 第三方署名与协议声明已在 `ATTRIBUTION.md` 与 `SKILL.md`「第三方迁移来源与署名」章节中保留，
+  未移除、未改协议。
+
+Windows 运行时的解密路径沿用来源逻辑，但本 Skill 未在 Windows 环境实测，
+对外一律标注为 **NOT_VERIFIED**，不得声称已验证。macOS 已实测通过。
